@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "telegram-trivia-chatbot"
+version = "0.1.0"
+description = "Telegram Trivia Chatbot"
+authors = ["Adan Patience <yobooooi@users.noreply.github.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.9"
+telebot = "^0.0.5"
+requests = "^2.31.0"
+python-telegram-bot = "^20.7"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
