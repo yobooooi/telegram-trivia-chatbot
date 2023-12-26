@@ -8,7 +8,6 @@ poll/quiz the bot generates. The preview command generates a closed poll/quiz, e
 one the user sends the bot
 """
 import logging
-import time
 import random
 
 from telegram import (
@@ -44,39 +43,77 @@ API_TOKEN = "6824247146:AAFsZU42xQ0-w62YYcp4ddsa8SbrYg4YRdI"
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Inform user about what this bot can do"""
-    await update.message.reply_text(
-        "Please select /poll to get a Poll, /quiz to get a Quiz or /preview"
-        " to generate a preview for your poll"
+    """Add a job to the queue."""
+    chat_id = update.effective_message.chat_id
+    try:
+        # args[0] should contain the time for the timer in minutes
+        interval = float(context.args[0])
+        if interval < 0:
+            await update.effective_message.reply_text("Sorry interval needs to be greater than 0!")
+            return
+
+        #TODO: currently using seconds. need to update to minutes
+        job_removed = remove_job_if_exists(str(chat_id), context)
+        context.job_queue.run_repeating(
+            quiz,
+            interval=interval,
+            chat_id=chat_id,
+            name=str(chat_id),
+        )
+
+        text = f"Quiz successfully started. Question frequency set to every {int(interval)} minute(s)!"
+        if job_removed:
+            text += "Old one was removed."
+        await update.effective_message.reply_text(text)
+
+    except (IndexError, ValueError):
+        await update.effective_message.reply_text("Usage: /quiz <minutes>")
+
+
+async def unset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove the job if the user changed their mind."""
+    chat_id = update.message.chat_id
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    text = "Quiz successfully cancelled!" if job_removed else "You have no active quiz."
+    await update.message.reply_text(text)
+
+
+def remove_job_if_exists(name: str, context: ContextTypes.DEFAULT_TYPE) -> bool:
+    """Remove job with given name. Returns whether job was removed."""
+    current_jobs = context.job_queue.get_jobs_by_name(name)
+    if not current_jobs:
+        return False
+    for job in current_jobs:
+        job.schedule_removal()
+    return True
+
+
+async def quiz(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a predefined poll"""
+    trivia    = Trivia()
+    quiz_info = trivia.get_next_question(
+        category_name   = random.choice(list(Category)).value,
+        difficulty_name = random.choice(list(Difficulty)).value
     )
 
-
-async def quiz(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a predefined poll"""
-    trivia = Trivia()
-    for i in range(2):
-        time.sleep(3)
-        quiz_info = trivia.get_next_question(
-            category_name   = random.choice(list(Category)).value,
-            difficulty_name = random.choice(list(Difficulty)).value
-        )
-
-        message = await update.effective_message.reply_poll(
-            "[{0}][{1}] - {2}".format(quiz_info["difficulty"].upper() ,quiz_info["category"].upper() ,quiz_info["question"]),
-            quiz_info["answers"],
-            type=Poll.QUIZ,
-            correct_option_id=int(quiz_info["correct_answer_index"]),
-            is_anonymous=False
-        )
-        # Save some info about the poll the bot_data for later use in receive_quiz_answer
-        payload = {
-            message.poll.id: {
-                "chat_id": update.effective_chat.id, 
-                "message_id": message.message_id,
-                "correct_option_id":int(quiz_info["correct_answer_index"]),
-            }
+    job = context.job
+    message = await context.bot.send_poll(
+        chat_id=job.chat_id,
+        question="[{0}][{1}] - {2}".format(quiz_info["difficulty"].upper() ,quiz_info["category"].upper() ,quiz_info["question"]),
+        options=quiz_info["answers"],
+        type=Poll.QUIZ,
+        correct_option_id=int(quiz_info["correct_answer_index"]),
+        is_anonymous=False
+    )
+    # Save some info about the poll the bot_data for later use in receive_quiz_answer
+    payload = {
+        message.poll.id: {
+            "chat_id": job.chat_id, 
+            "message_id": message.message_id,
+            "correct_option_id":int(quiz_info["correct_answer_index"]),
         }
-        context.bot_data.update(payload)
+    }
+    context.bot_data.update(payload)
 
 
 async def receive_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -97,9 +134,9 @@ def main() -> None:
     """Run bot."""
     # Create the Application and pass it your bot's token.
     application = Application.builder().token(API_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("quiz", quiz))
+    application.add_handler(CommandHandler("quiz", start))
     application.add_handler(CommandHandler("help", help_handler))
+    application.add_handler(CommandHandler("unset", unset))
     application.add_handler(PollAnswerHandler(receive_quiz_answer))
 
     # Run the bot until the user presses Ctrl-C
