@@ -10,6 +10,14 @@ one the user sends the bot
 import logging
 import random
 
+from tinydb import (
+    TinyDB,
+    Query,
+)
+
+from tinydb.operations import increment
+
+
 from telegram import (
     Poll,
     Update,
@@ -52,11 +60,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.effective_message.reply_text("Sorry interval needs to be greater than 0!")
             return
 
-        #TODO: currently using seconds. need to update to minutes
         job_removed = remove_job_if_exists(str(chat_id), context)
         context.job_queue.run_repeating(
             quiz,
-            interval=interval,
+            interval=(interval*60), # multiply by 60 for minute representation
             chat_id=chat_id,
             name=str(chat_id),
         )
@@ -118,16 +125,56 @@ async def quiz(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def receive_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Close quiz after three participants took it"""
-    # the bot can receive closed poll updates we don't care about
+
     poll_answer = update.poll_answer
-    logger.info(poll_answer)
-    payload = context.bot_data[poll_answer.poll_id]
-    logger.info(payload)
+    payload     = context.bot_data[poll_answer.poll_id]
+
+    chat_id        = payload["chat_id"]
+    user           = poll_answer.user
+    user_answer    = poll_answer.option_ids[0]
+    correct_answer = payload["correct_option_id"]
+
+    logger.info(f"chat_id: {chat_id}")
+    logger.info(f"user: {user.username}")
+    logger.info(f"user_answer: {user_answer}")
+    logger.info(f"correct_answer: {correct_answer}")
+    
+    db = TinyDB(f'{chat_id}.json')
+
+    User = Query()
+    # checking if answer is correct
+    if int(user_answer) == int(correct_answer):
+        # searching if user exists in database to increment score
+        if db.get(User.user_name == user.username) is not None:
+            logger.info(f"{user.username} answered correctly incrementing score")
+            db.update(increment('score'), User.user_name == user.username)
+        else:
+            logger.info(f"{user.username} answered correctly adding 1 point to score")
+            db.upsert({ 
+                'user_name': user.username,
+                'score': 1
+            })
+    else:
+        # searching if user exists in database to increment score to add user entry
+        if db.get(User.user_name == user.username) is None:
+            logger.info(f"{user.username} answered incorrectly. adding to score database")
+            db.insert({ 
+                'user_name': user.username,
+                'score': 0
+            })
+    logger.debug(db.all())
+
+async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Remove the job if the user changed their mind."""
+    chat_id = update.message.chat_id
+    db = TinyDB(f'{chat_id}.json')
+    text = f"Scores: \n{db.all()}"
+    await update.message.reply_text(text)
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display a help message"""
-    await update.message.reply_text("Use /quiz, /poll or /preview to test this bot.")
+    await update.message.reply_text("Use /quiz, /score to use this bot. Use /unset to stop quiz")
 
 
 def main() -> None:
@@ -137,6 +184,7 @@ def main() -> None:
     application.add_handler(CommandHandler("quiz", start))
     application.add_handler(CommandHandler("help", help_handler))
     application.add_handler(CommandHandler("unset", unset))
+    application.add_handler(CommandHandler("score", score))
     application.add_handler(PollAnswerHandler(receive_quiz_answer))
 
     # Run the bot until the user presses Ctrl-C
