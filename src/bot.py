@@ -9,6 +9,7 @@ one the user sends the bot
 """
 import logging
 import random
+import prettytable as pt
 
 from tinydb import (
     TinyDB,
@@ -20,7 +21,7 @@ from tinydb.operations import increment
 
 from telegram import (
     Poll,
-    Update,
+    Update
 )
 
 from telegram.ext import (
@@ -166,12 +167,15 @@ async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id = update.message.chat_id
     db = TinyDB(f'{chat_id}.json')
 
-    markdown_table = "| User Name      | Score |\n| -------------- | ----- |\n"
-    for row in db.all():
-        markdown_table += f"| {row['user_name']:<15} | {row['score']:<5} |\n"
+    table = pt.PrettyTable(['username', 'score'])
+    table.align['username'] = 'l'
+    table.align['score']  = 'r'
 
-    logger.info(markdown_table)
-    await update.message.reply_text(markdown_table)
+    for row in db.all():
+        table.add_row([row['user_name'], row['score']])
+
+    logger.info(table)
+    await update.message.reply_text(f'```{table}```', parse_mode="MarkdownV2")
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

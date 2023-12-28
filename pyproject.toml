@@ -11,6 +11,7 @@ telebot = "^0.0.5"
 requests = "^2.31.0"
 python-telegram-bot = {extras = ["job-queue"], version = "^20.7"}
 tinydb = "^4.8.0"
+prettytable = "^3.9.0"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
