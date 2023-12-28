@@ -13,5 +13,7 @@ COPY poetry.lock pyproject.toml /app/
 ENV PATH="${PATH}:/root/.local/bin"
 RUN poetry config virtualenvs.create false && poetry install
 
+RUN pip install "python-telegram-bot[job-queue]"
+
 # Run the flask application
 CMD ["python", "app.py"]
