@@ -45,10 +45,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-
-TOTAL_VOTER_COUNT = 4
 API_TOKEN = "6824247146:AAFsZU42xQ0-w62YYcp4ddsa8SbrYg4YRdI"
-
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Add a job to the queue."""
@@ -168,8 +165,13 @@ async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Remove the job if the user changed their mind."""
     chat_id = update.message.chat_id
     db = TinyDB(f'{chat_id}.json')
-    text = f"Scores: \n{db.all()}"
-    await update.message.reply_text(text)
+
+    markdown_table = "| User Name      | Score |\n| -------------- | ----- |\n"
+    for row in db.all():
+        markdown_table += f"| {row['user_name']:<15} | {row['score']:<5} |\n"
+
+    logger.info(markdown_table)
+    await update.message.reply_text(markdown_table)
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
