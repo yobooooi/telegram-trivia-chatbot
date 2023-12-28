@@ -7,7 +7,7 @@ WORKDIR /app
 # Copy the current directory contents into the container at /app
 COPY . /app
 
-RUN curl -sSL https://install.python-poetry.org | python3 -
+RUN curl -sSL https://install.python-poetry.org | python -
 COPY poetry.lock pyproject.toml /app/
 
 ENV PATH="${PATH}:/root/.local/bin"
