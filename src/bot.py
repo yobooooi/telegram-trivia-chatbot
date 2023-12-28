@@ -147,7 +147,7 @@ async def receive_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
             db.update(increment('score'), User.user_name == user.username)
         else:
             logger.info(f"{user.username} answered correctly adding 1 point to score")
-            db.upsert({ 
+            db.insert({ 
                 'user_name': user.username,
                 'score': 1
             })

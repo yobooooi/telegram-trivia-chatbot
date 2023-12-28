@@ -1,0 +1,20 @@
+name: telegram-trivia-chatbot build and run
+
+on:
+  push:
+    branches:
+      - main  # Change this to your main branch name
+
+jobs:
+  build:
+    runs-on: telegram
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Build Docker Image
+      run: docker build -t telegram-trivia:latest .
+
+    - name: Run Docker Container
+      run: docker run -d telegram-trivia:latest
