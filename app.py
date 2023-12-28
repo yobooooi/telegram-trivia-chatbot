@@ -3,4 +3,5 @@ from src.bot import (
 )
 
 if __name__ == "__main__":
+    # invoke main method of telegram bot
     main()
