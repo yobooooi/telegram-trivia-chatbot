@@ -10,14 +10,7 @@ one the user sends the bot
 import logging
 import random
 import prettytable as pt
-
-from tinydb import (
-    TinyDB,
-    Query,
-)
-
-from tinydb.operations import increment
-
+import os
 
 from telegram import (
     Poll,
@@ -37,6 +30,10 @@ from src.trivia import (
     Category
 )
 
+from src.models import (
+    UserStats
+)
+
 # Enable logging
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
@@ -46,7 +43,7 @@ logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
-API_TOKEN = "6824247146:AAFsZU42xQ0-w62YYcp4ddsa8SbrYg4YRdI"
+API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Add a job to the queue."""
@@ -108,7 +105,8 @@ async def quiz(context: ContextTypes.DEFAULT_TYPE) -> None:
         options=quiz_info["answers"],
         type=Poll.QUIZ,
         correct_option_id=int(quiz_info["correct_answer_index"]),
-        is_anonymous=False
+        is_anonymous=False,
+        pool_timeout=3600 #TODO: use the quiz handler to set this value
     )
     # Save some info about the poll the bot_data for later use in receive_quiz_answer
     payload = {
@@ -116,6 +114,7 @@ async def quiz(context: ContextTypes.DEFAULT_TYPE) -> None:
             "chat_id": job.chat_id, 
             "message_id": message.message_id,
             "correct_option_id":int(quiz_info["correct_answer_index"]),
+            "catergory": quiz_info["category"]
         }
     }
     context.bot_data.update(payload)
@@ -131,48 +130,61 @@ async def receive_quiz_answer(update: Update, context: ContextTypes.DEFAULT_TYPE
     user           = poll_answer.user
     user_answer    = poll_answer.option_ids[0]
     correct_answer = payload["correct_option_id"]
+    catergory      = payload["catergory"]
 
     logger.info(f"chat_id: {chat_id}")
     logger.info(f"user: {user.username}")
     logger.info(f"user_answer: {user_answer}")
     logger.info(f"correct_answer: {correct_answer}")
-    
-    db = TinyDB(f'{chat_id}.json')
 
-    User = Query()
+    chat_user_stats = UserStats(chat_id=chat_id)
     # checking if answer is correct
     if int(user_answer) == int(correct_answer):
-        # searching if user exists in database to increment score
-        if db.get(User.user_name == user.username) is not None:
-            logger.info(f"{user.username} answered correctly incrementing score")
-            db.update(increment('score'), User.user_name == user.username)
-        else:
-            logger.info(f"{user.username} answered correctly adding 1 point to score")
-            db.insert({ 
-                'user_name': user.username,
-                'score': 1
-            })
+        chat_user_stats.score_user(
+            user_name=user.username,
+            category_name=catergory,
+            correct=True
+        )
     else:
-        # searching if user exists in database to increment score to add user entry
-        if db.get(User.user_name == user.username) is None:
-            logger.info(f"{user.username} answered incorrectly. adding to score database")
-            db.insert({ 
-                'user_name': user.username,
-                'score': 0
-            })
-    logger.debug(db.all())
+        chat_user_stats.score_user(
+            user_name=user.username,
+            category_name=catergory,
+            correct=False
+        )
+
 
 async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Remove the job if the user changed their mind."""
-    chat_id = update.message.chat_id
-    db = TinyDB(f'{chat_id}.json')
+    """Shows scores"""
+    chat_id     = update.message.chat_id
+    quiz_scores = UserStats(chat_id=chat_id).scores()
 
-    table = pt.PrettyTable(['username', 'score'])
+    table = pt.PrettyTable(['username', 'score', 'win%'])
     table.align['username'] = 'l'
-    table.align['score']  = 'r'
+    table.align['score']  = 'c'
+    table.align['win%']  = 'c'
 
-    for row in db.all():
-        table.add_row([row['user_name'], row['score']])
+    for score in quiz_scores:
+        table.add_row([score['user_name'], score['score'], score['winning_percentage']])
+
+    logger.info(table)
+    await update.message.reply_text(f'```{table}```', parse_mode="MarkdownV2")
+
+
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Shows stats for user"""
+
+    chat_id  = update.message.chat_id
+    username = update.message.from_user.username
+    logger.info(f"{username} requesting stats for chat_id: {chat_id}")
+    record   = UserStats(chat_id=chat_id).stats(user_name=username)
+
+    table = pt.PrettyTable(["attribute", "value"])
+
+    table.add_row(["user_name", record['user_name']])
+    table.add_row(["score", record['score']])
+    table.add_row(["tot_ans", record['total_answered']])
+    table.add_row(["win%", record['winning_percentage']])
+    table.add_row(["best_category", record['best_category']])
 
     logger.info(table)
     await update.message.reply_text(f'```{table}```', parse_mode="MarkdownV2")
@@ -180,7 +192,7 @@ async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Display a help message"""
-    await update.message.reply_text("Use /quiz, /score to use this bot. Use /unset to stop quiz")
+    await update.message.reply_text("Use /quiz, /score to use this bot. Use /unset to stop quiz. Use /stats to see your personalized stats")
 
 
 def main() -> None:
@@ -191,6 +203,7 @@ def main() -> None:
     application.add_handler(CommandHandler("help", help_handler))
     application.add_handler(CommandHandler("unset", unset))
     application.add_handler(CommandHandler("score", score))
+    application.add_handler(CommandHandler("stats", stats))
     application.add_handler(PollAnswerHandler(receive_quiz_answer))
 
     # Run the bot until the user presses Ctrl-C
