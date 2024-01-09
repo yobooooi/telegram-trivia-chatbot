@@ -13,8 +13,9 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v2
 
-    - name: Build Docker Image
-      run: docker build -t telegram-trivia:latest .
-
-    - name: Run Docker Container
-      run: docker run -d telegram-trivia:latest
+    - name: Docker Compose
+      run: | 
+        echo "TELEGRAM_API_TOKEN=${{ secrets.TELEGRAM_API_TOKEN }}" >> .env
+        docker-compose up --build -d
+      env:
+        TELEGRAM_API_TOKEN: ${{ secrets.TELEGRAM_API_TOKEN }}
