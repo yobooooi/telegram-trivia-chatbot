@@ -20,6 +20,20 @@ class UserStats:
     def __init__(self, chat_id) -> None:
         self.db = TinyDB(f'chatdbs/{chat_id}.json')
 
+    def migrations(self):
+        """migration function to align db schema"""
+        all_records = self.db.all()
+        for record in all_records:
+            user_name = record['user_name']
+            self.db.update(
+                {
+                    'current_round': 0,
+                    'rounds_won': 0
+                },
+                Query().user_name == user_name
+            )
+
+        logger.info("migrations completed")
 
     def score_user(self, user_name, category_name, correct):
         """Update user scores"""
@@ -28,7 +42,9 @@ class UserStats:
             logger.info(f"{user_name} answered correctly. updating scores")
 
             # updating new score and total_answered
-            updated_score, updated_total_answered = record.get('score') + 1, record.get('total_answered') + 1
+            updated_score = record.get('score') + 1
+            updated_total_answered = record.get('total_answered') + 1
+            current_round = record.get('total_answered') + 1
             # update category scores and winning percentage
             categories = record.get('categories', {})
             if category_name in categories:
@@ -44,7 +60,8 @@ class UserStats:
                     'categories': categories,
                     'winning_percentage': winning_percentage,
                     'score': updated_score,
-                    'total_answered': updated_total_answered
+                    'total_answered': updated_total_answered,
+                    'current_round': current_round
                 },
                 Query().user_name == user_name
             )
@@ -68,7 +85,9 @@ class UserStats:
                     'score': 1,
                     'total_answered': 1,
                     'winning_percentage': 100,
-                    'categories': {category_name: 1}
+                    'categories': {category_name: 1},
+                    'current_round': 1,
+                    'rounds_won': 0
                 })
         else:
             self.db.insert({
@@ -76,7 +95,9 @@ class UserStats:
                 'score': 0,
                 'total_answered': 1,
                 'winning_percentage': 0,
-                'categories': {}
+                'categories': {},
+                'current_round': 1,
+                'rounds_won': 0
             })
         logger.debug(self.db.all())
     
@@ -86,7 +107,7 @@ class UserStats:
         all_records = self.db.all()
 
         # Sort the records based on the specified column
-        sorted_records = sorted(all_records, key=lambda x: x.get('score', 0), reverse=True)
+        sorted_records = sorted(all_records, key=lambda x: x.get('current_round', 0), reverse=True)
 
         # Process each record and keep only the highest category
         for record in sorted_records:
@@ -112,3 +133,36 @@ class UserStats:
                 record['best_category'] = None
         logger.debug(record)
         return record
+
+    def reset_score(self, user_name):
+        self.db.update(
+            {
+                'current_round': 0
+            },
+            Query().user_name == user_name
+        )   
+    
+    def close_round(self):
+        """Return winners and reset scores for current round"""
+        # Retrieve all records
+        all_records = self.db.all()
+        sorted_records = sorted(all_records, key=lambda x: x.get('current_round', 0), reverse=True)
+
+        # reset scores
+        for record in all_records:
+            user_name = record['user_name']
+            self.reset_score(user_name)
+
+        # allocate rounds_won point to winner
+        winner_user_name = sorted_records[0]['user_name']
+        logger.info(f"winner is {winner_user_name}")
+        record = self.db.get(Query().user_name == winner_user_name)
+
+        updated_rounds_won = record["rounds_won"] + 1
+        self.db.update(
+            {
+                'rounds_won': updated_rounds_won
+            },
+            Query().user_name == winner_user_name
+        )
+        return winner_user_name

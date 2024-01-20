@@ -12,6 +12,8 @@ import random
 import prettytable as pt
 import os
 
+from datetime import time
+
 from telegram import (
     Poll,
     Update
@@ -55,12 +57,25 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             await update.effective_message.reply_text("Sorry interval needs to be greater than 0!")
             return
 
-        job_removed = remove_job_if_exists(str(chat_id), context)
+        job_removed = remove_job_if_exists(f"{str(chat_id)}-quiz", context)
+        job_removed = remove_job_if_exists(f"{str(chat_id)}-quiz-reset", context)
+        # if existing chat run migrations
+        UserStats(chat_id=chat_id).migrations()
+        # job that sends quiz messages
         context.job_queue.run_repeating(
             quiz,
             interval=(interval*60), # multiply by 60 for minute representation
             chat_id=chat_id,
-            name=str(chat_id),
+            name=f"{str(chat_id)}-quiz",
+        )
+        
+        # job that tallies and resets all scores for a round
+        context.job_queue.run_daily(
+            reset,
+            time=time(hour=0, minute=0, second=0, microsecond=0),
+            days=(6,6),
+            chat_id=chat_id,
+            name=f"{str(chat_id)}-quiz-reset",
         )
 
         text = f"Quiz successfully started. Question frequency set to every {int(interval)} minute(s)!"
@@ -75,8 +90,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 async def unset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Remove the job if the user changed their mind."""
     chat_id = update.message.chat_id
-    job_removed = remove_job_if_exists(str(chat_id), context)
-    text = "Quiz successfully cancelled!" if job_removed else "You have no active quiz."
+    if remove_job_if_exists(f"{str(chat_id)}-quiz", context) and remove_job_if_exists(f"{str(chat_id)}-quiz-reset", context):
+        text = "Quiz successfully cancelled!"
+    else:
+        text = "You have no active quiz."
     await update.message.reply_text(text)
 
 
@@ -158,13 +175,14 @@ async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id     = update.message.chat_id
     quiz_scores = UserStats(chat_id=chat_id).scores()
 
-    table = pt.PrettyTable(['username', 'score', 'win%'])
+    table = pt.PrettyTable(['username', 'current_round', 'win%', 'rounds_won'])
     table.align['username'] = 'l'
-    table.align['score']  = 'c'
+    table.align['current_round']  = 'c'
     table.align['win%']  = 'c'
+    table.align['rounds_won']  = 'c'
 
     for score in quiz_scores:
-        table.add_row([score['user_name'], score['score'], score['winning_percentage']])
+        table.add_row([score['user_name'], score['current_round'], score['winning_percentage'], score['rounds_won']])
 
     logger.info(table)
     await update.message.reply_text(f'```{table}```', parse_mode="MarkdownV2")
@@ -176,7 +194,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id  = update.message.chat_id
     username = update.message.from_user.username
     logger.info(f"{username} requesting stats for chat_id: {chat_id}")
-    record   = UserStats(chat_id=chat_id).stats(user_name=username)
+    record = UserStats(chat_id=chat_id).stats(user_name=username)
 
     table = pt.PrettyTable(["attribute", "value"])
 
@@ -185,9 +203,18 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     table.add_row(["tot_ans", record['total_answered']])
     table.add_row(["win%", record['winning_percentage']])
     table.add_row(["best_category", record['best_category']])
+    table.add_row(["rounds_won", record['rounds_won']])
 
     logger.info(table)
     await update.message.reply_text(f'```{table}```', parse_mode="MarkdownV2")
+
+
+async def reset(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    chat_id  = update.message.chat_id
+    winner = UserStats(chat_id=chat_id).close_round()
+    text = f"The winner is {winner} !!!"
+    
+    await update.effective_message.reply_text(text)
 
 
 async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -204,6 +231,7 @@ def main() -> None:
     application.add_handler(CommandHandler("unset", unset))
     application.add_handler(CommandHandler("score", score))
     application.add_handler(CommandHandler("stats", stats))
+    application.add_handler(CommandHandler("reset", reset))
     application.add_handler(PollAnswerHandler(receive_quiz_answer))
 
     # Run the bot until the user presses Ctrl-C

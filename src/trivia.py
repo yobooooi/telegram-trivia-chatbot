@@ -32,7 +32,6 @@ class Category(Enum):
     HISTORY = 23
     ART = 25
     VEHICLES = 28
-    ANIME = 31
 
 
 
