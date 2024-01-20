@@ -44,7 +44,7 @@ class UserStats:
             # updating new score and total_answered
             updated_score = record.get('score') + 1
             updated_total_answered = record.get('total_answered') + 1
-            current_round = record.get('total_answered') + 1
+            current_round = record.get('current_round') + 1
             # update category scores and winning percentage
             categories = record.get('categories', {})
             if category_name in categories:
@@ -96,7 +96,7 @@ class UserStats:
                 'total_answered': 1,
                 'winning_percentage': 0,
                 'categories': {},
-                'current_round': 1,
+                'current_round': 0,
                 'rounds_won': 0
             })
         logger.debug(self.db.all())
