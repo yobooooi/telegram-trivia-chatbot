@@ -175,7 +175,7 @@ async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     chat_id     = update.message.chat_id
     quiz_scores = UserStats(chat_id=chat_id).scores()
 
-    table = pt.PrettyTable(['username', 'current_round', 'win%', 'rounds_won'])
+    table = pt.PrettyTable(['username', 'cur_rnd', 'win%', 'rnd_won'])
     table.align['username'] = 'l'
     table.align['cur_rnd']  = 'c'
     table.align['win%']     = 'c'
