@@ -177,9 +177,9 @@ async def score(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     table = pt.PrettyTable(['username', 'current_round', 'win%', 'rounds_won'])
     table.align['username'] = 'l'
-    table.align['current_round']  = 'c'
-    table.align['win%']  = 'c'
-    table.align['rounds_won']  = 'c'
+    table.align['cur_rnd']  = 'c'
+    table.align['win%']     = 'c'
+    table.align['rnd_won']  = 'c'
 
     for score in quiz_scores:
         table.add_row([score['user_name'], score['current_round'], score['winning_percentage'], score['rounds_won']])
