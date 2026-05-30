@@ -1,3 +1,4 @@
+# importing package
 from src.bot import (
     main
 )
